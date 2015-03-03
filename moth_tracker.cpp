@@ -34,7 +34,7 @@ using namespace boost;
 int const DEPTH = CV_16S;// 16short is used to prevent overflow during gradient cal
 int SCALE = 1,DELTA = 0;
 int RADIUS = 5;
-int MIN_AREA = 80;  // *** increasing this value --> more spotty trajectory *** //
+int MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
 int keyboard, frameID;
 
 bool bgSet = false; // flag which indicates background image was initialized
@@ -73,7 +73,7 @@ int main(int argc, char* argv[])
 
   getBGModel(argv[1]);
   //input data coming from a video
-  //if(bgSet){ processVideo(argv[1]); }
+  if(bgSet){ processVideo(argv[1]); }
   imshow("background", model0); waitKey(0);
   //destroy GUI windows
   destroyAllWindows();
@@ -196,15 +196,15 @@ void getBGModel(char* videoFilename)
   // initialize model0: must be same size and type as video frames
   src0 = Mat::zeros( src1.size(), CV_8UC3 ); // CV_8UC3 = unsigned char w/ 3channels
 
-  while( capture.get(CV_CAP_PROP_POS_FRAMES) < 0.1*(capture.get(CV_CAP_PROP_FRAME_COUNT)-2))
-  {    
+  while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
+  {
     // read new frame as second source img
     if(!capture.read(src1))
     {
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
-    double a = 0.85, b = 1.0-a; // new input gets less weight
+    double a = 0.5, b = 1.0-a; // new input gets less weight
     // apply simple linear blending operation
     addWeighted(src0,a,src1,b,0.0,model0);
     src0 = model0.clone();
