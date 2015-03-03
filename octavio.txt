@@ -1,0 +1,188 @@
+#!/usr/bin/env python
+"""
+This script first applies a running background substraction, then thresholds
+to find a blob approximating the moving moth.  It then finds the centroid 
+of this and writes it to a file. 
+"""
+
+import argparse
+import logging
+import cv2
+import numpy as np
+import pandas as pd
+import os
+
+
+
+
+class BackgroundSubtractor(object):
+    """
+    This object has one method (calling it), which returns
+    the subtracted image and updates the running background state. 
+    """
+    def __init__(self,frame,alpha=0.05):
+        self.background = np.array(frame/255.,dtype=np.float32)
+        self.alpha=alpha
+        super(BackgroundSubtractor,self).__init__()
+
+    def apply(self,frame):
+        scaled = np.array(frame/255., dtype=np.float32)
+        subtracted = np.abs(scaled-self.background)
+        result = np.array(subtracted*255.,dtype=np.uint8)
+        cv2.accumulateWeighted(scaled,self.background,self.alpha)
+        return result
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+
+    # This stuff gets command line input arguments
+    parser = argparse.ArgumentParser(description="Detect and locate moths in Octavio Campos' videos of hawkmoths",epilog=__doc__)
+    parser.add_argument("ifile",help="movie file name to process")
+    parser.add_argument("--ofile",default=None,
+                        help="output name for positions, default result.csv")
+    parser.add_argument("--alpha",default=0.1,
+                        help="forgetting parameter for background subtraction, default 0.1")
+    parser.add_argument("--threshold",default=8,
+                        help="threshold for detecting moth, default 15")
+    parser.add_argument("--verbose",action="store_true",
+                        help="toggle verbosity")
+    parser.add_argument("--display",action="store_true",
+                        help="show images during processing")
+    args = parser.parse_args()
+
+
+    # This puts it into verbose mode
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug("running in verbose mode")
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    # This sets the default filename for output if not specified
+    if args.ofile is None:
+        args.ofile = os.path.join(os.path.dirname(args.ifile),
+                                  'result.csv')
+
+    # Open the movie and check how many frames
+    logging.debug("opening {0}".format(args.ifile))
+    movie = cv2.VideoCapture(args.ifile)
+    frame_count=int(movie.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+    logging.debug("{0} has {1} frames".format(args.ifile,frame_count))
+    
+    # For my background subtractor, I initialize the background
+    logging.debug("using first frame to initialize background")
+    retval = False
+    retries = 0
+    while (not retval) or (retries<20):
+        retval,raw = movie.read()
+        retries = retries+1
+    if retval:
+        ibg = cv2.cvtColor(raw,cv2.COLOR_RGB2GRAY)
+        logging.debug("closing and reopening {0}".format(args.ifile))
+        movie = None
+        movie = cv2.VideoCapture(args.ifile)
+    else:
+        logging.error("unable to open {0}".format(args.ifile))
+        raise Exception("unable to open movie {0}".format(args.ifile))
+    bg_subtractor = BackgroundSubtractor(ibg,alpha=float(args.alpha))
+
+
+
+    # tried a few other background subtraction methods but they don't work
+    # well for this problem
+    #bg_subtractor = cv2.BackgroundSubtractorMOG2(history=40,
+    #                                             varThreshold=16)
+    #bg_subtractor = cv2.BackgroundSubtractorMOG(history=40,
+    #                                            nmixtures=3,
+    #                                            backgroundRatio=0.8,
+    #                                            noiseSigma=0)
+
+
+
+    # This is only done if we want to display while processing
+    # to check that it is doing the right thing. 
+    if args.display:
+        logging.debug("creating display windows")
+        cv2.namedWindow("raw image",cv2.cv.CV_WINDOW_NORMAL)
+        cv2.namedWindow("processed result",cv2.cv.CV_WINDOW_NORMAL)
+
+    # Results are stored as a dict() of lists() until the end,
+    # when they are converted to a DataFrame for output as csv.
+    logging.debug("initializing results")
+    result = dict()
+    result['frame'] = list()
+    result['x'] = list()
+    result['y'] = list()
+
+    # here we go
+    logging.debug("beginning frame by frame processing")
+    if args.display:
+        logging.info("display frames as we go")
+    else:
+        print("frame,x,y")
+
+    for current_frame in range(frame_count):
+        retval,raw = movie.read() # reads the frame
+        
+        if retval:
+            gray = cv2.cvtColor(raw,cv2.COLOR_RGB2GRAY) 
+            # my subtractor only works with 1 channel images
+
+            # do subtraction, then thresholding
+            subtracted = bg_subtractor.apply(gray)
+            _,thresh = cv2.threshold(subtracted,int(args.threshold),
+                                     255,cv2.THRESH_BINARY)
+        
+            # calculate the center by finding the image centroid
+            moments = cv2.moments(thresh,binaryImage=True)
+            eps = 0.000001
+            x = moments['m10']/(moments['m00']+eps)
+            y = moments['m01']/(moments['m00']+eps)
+            # and store the result in our future data frame
+            result['frame'].append(current_frame)
+            result['x'].append(x)
+            result['y'].append(y)
+
+            # display it pretty
+            if args.display:
+                blue,green,red = cv2.split(raw)
+                comparer = cv2.bitwise_or(thresh,red)
+                compareb = cv2.bitwise_or(thresh,blue)
+                draw = cv2.merge((compareb,green,comparer))
+                cv2.line(draw,
+                         (int(x),int(y-10)),
+                         (int(x),int(y+10)),
+                         (0,255,255),2)
+                cv2.line(draw,
+                         (int(x-10),int(y)),
+                         (int(x+10),int(y)),
+                         (0,255,255),2)
+                
+                cv2.imshow("raw image",raw)
+                cv2.imshow("processed result",draw)
+                cv2.waitKey(1)
+            else:
+                print("{0},{1},{2}".format(current_frame,x,y))
+    
+
+    # when it's done, convert the dict of lists into a data frame 
+    # and then output it to a csv
+    logging.debug("writing results to {0}".format(args.ofile))
+    result_df = pd.DataFrame(result)
+    result_df.to_csv(args.ofile,index=False)
+
+    # and clean up by closing the movie and closing the windows if open
+    logging.debug("cleaning up")
+    movie = None
+    if args.display:
+        cv2.destroyWindow("raw image")
+        cv2.destroyWindow("processed result")
+
+
