@@ -207,7 +207,6 @@ void getBGModel(char* videoFilename)
     double a = 0.85, b = 1.0-a; // new input gets less weight
     // apply simple linear blending operation
     addWeighted(src0,a,src1,b,0.0,model0);
-    // update first source img
     src0 = model0.clone();
   }
   bgSet = true;
