@@ -8,22 +8,27 @@ find_package( OpenCV REQUIRED )
 #set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 #set(CMAKE_EXE_LINKER_FLAGS "-static")
 
+#set( tracker_SRC progressbar.cpp moth_tracker.cpp )
+#set( tracker_HDR progressbar.h )
+
 ## Build ##
 include_directories(
   ${OpenCV_INCLUDE_LIBRARIES}
 )
+#INCLUDE( ${QT_USE_FILE} )
+#ADD_DEFINITIONS(${QT_DEFINITIONS}
+# This macro invokes moc: processes headers and stores src files in _HDR_MOC 
+#QT4_WRAP_CPP( tracker_HDR_MOC ${tracker_HDR} )
 
 ## Declare a cpp executable
-#add_executable(backsub backsub.cpp)
 add_executable(moth_tracker moth_tracker.cpp)
+#add_executable(moth_tracker ${tracker_SRC} ${tracker_HRD_MOC})
 add_executable(test Test/test.cpp)
 
 ## Specify libraries to link a library or executable target against
-#target_link_libraries(backsub
-#  ${OpenCV_LIBRARIES}
-#)
 target_link_libraries(moth_tracker
   ${OpenCV_LIBRARIES}
+#  ${QT_LIBRARIES}
 )
 target_link_libraries(test
   ${OpenCV_LIBRARIES}

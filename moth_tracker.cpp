@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
   getBGModel(argv[1]);
   //input data coming from a video
   if(bgSet){ processVideo(argv[1]); }
-  imshow("background", model0); waitKey(0);
+
   //destroy GUI windows
   destroyAllWindows();
   data_out.close();
@@ -167,10 +167,8 @@ void getCentroid()
                 '\n';
 #endif
   }
-
   draw(centroid);
   //printf( "[%d]\t\t(%d,%d)\n", frameID, centroid.x, centroid.y );  //INFO//
-
 }
 
 // Averages all frames within video file into one image which represents the initial background model, model0
@@ -238,43 +236,42 @@ void processVideo(char* videoFilename)
   }
   cout << "Processing video... (enter ESC or 'q' to quit)\n";                //INFO//
 
-  frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // contained in output
+  frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
   // read input data. ESC or 'q' for quitting.
   while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
-//  while( capture.read(frame) \
-//         && (char)keyboard != 'q' && (char)keyboard != 27 )
   {      
     if(!capture.read(frame))
     {     
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
-    frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // contained in output
+    frameID = capture.get(CV_CAP_PROP_POS_FRAMES);
+    double p = 100*(frameID/capture.get(CV_CAP_PROP_FRAME_COUNT));
     // get foreground mask and update the background model
     pMOG2->operator()(frame, fgMaskMOG2);
     // write frame number on the current frame
     stringstream ss;
     rectangle(frame, cv::Point(10, 2), cv::Point(100,20),
               cv::Scalar(255,255,255), -1);
-    ss << capture.get(CV_CAP_PROP_POS_FRAMES);
-    string frameNumberString = ss.str();
-    putText(frame, frameNumberString.c_str(), cv::Point(15, 15),
+    ss << (int)(p-fmod(p,1));    // percent progress floored in the ones place
+    string percentProgress = ss.str()+"%";
+    putText(frame, percentProgress.c_str(), cv::Point(15, 15),
             FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(0,0,0));
-
+    //cout << percentProgress << endl;
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
-    try
-    {
-      imshow("Highlighted Foreground", foreground);
-      imshow("Result", result);
-    }
-    catch(Exception &e)
-    {
-      cerr <<"failed to display result" << endl;
-      exit(EXIT_FAILURE);
-    }
-    // quit upon user input
-    keyboard = waitKey( 27 );
+    try                                              // INFO //
+    {                                                //
+      imshow("Highlighted Foreground", foreground);  //
+      imshow("Result", result);                      //
+    }                                                //
+    catch(Exception &e)                              //
+    {                                                //
+      cerr <<"failed to display result" << endl;     //
+      exit(EXIT_FAILURE);                            //
+    }                                                //
+    // quit upon user input                          //
+    keyboard = waitKey( 27 );                        // INFO //
   }
 
   // delete capture object
