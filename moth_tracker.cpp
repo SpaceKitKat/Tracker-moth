@@ -8,9 +8,14 @@
  **/
 
 
-/*** @TODO: obtain flower positions from xls file
-            calc processing time (fps)
+/*** @TODO: produce visitation sequence to compare with human data
 ***/
+
+//NOTES:
+// For background update, use pMOG2->operator()(frame,fgMaskMOG2) and initialize with
+// average of all frames. pMOG2->operator()(frame,fgMaskMOG2, learningRate) is another
+// option, but adjusting learning rate causes relatively stationary objects to blend
+// in with the background model. This is problematic for tracking when moth is visiting.
 
 //opencv
 #include <opencv2/highgui/highgui.hpp>
@@ -37,7 +42,7 @@ int RADIUS = 5;
 int MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
 int keyboard, frameID;
 
-bool bgSet = false; // flag which indicates background image was initialized
+bool bgSet; // flag indicates background averaging
 
 Mat model0, frame, fgMaskMOG2, result,foreground; // binary mask containing foreground
 Ptr<BackgroundSubtractor> pMOG2;
@@ -60,7 +65,6 @@ void segObjects();
 int main(int argc, char* argv[])
 {
   pMOG2 = new BackgroundSubtractorMOG2(10,16,false); //MOG2 approach
-
   //check for the input parameter correctness
   if(argc != 3)
   {
@@ -70,7 +74,7 @@ int main(int argc, char* argv[])
   }
   //create data file
   data_out.open(argv[2]);
-
+  //initialize background
   getBGModel(argv[1]);
   //input data coming from a video
   if(bgSet){ processVideo(argv[1]); }
@@ -103,7 +107,7 @@ void drawForeground()
 
 }
 
-// returns average between all segments that exceed the threshold
+// returns average position between all segments that exceed the threshold
 Point retrieveAvg(vector<int> a,int asize)
 { // a contains INDECES of contours
   vector< Moments > mu(asize); // central moments
@@ -171,7 +175,9 @@ void getCentroid()
   //printf( "[%d]\t\t(%d,%d)\n", frameID, centroid.x, centroid.y );  //INFO//
 }
 
-// Averages all frames within video file into one image which represents the initial background model, model0
+// Averages all frames within video file into one image which represents the initial background model
+// NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
+// the average intensity.
 void getBGModel(char* videoFilename)
 {
   Mat src1,src0;
@@ -191,9 +197,8 @@ void getBGModel(char* videoFilename)
     cerr <<"Unable to read next frame.\nExiting..." << endl;
     exit(EXIT_FAILURE);
   }
-  // initialize model0: must be same size and type as video frames
-  src0 = Mat::zeros( src1.size(), CV_8UC3 ); // CV_8UC3 = unsigned char w/ 3channels
-
+  // initialize model0: still range [0,255]; for imshow, use src1.convertTo(model0,CV_32FC3, 1.0/255)
+  src1.convertTo(model0,CV_32FC3);
   while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
   {
     // read new frame as second source img
@@ -202,11 +207,16 @@ void getBGModel(char* videoFilename)
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
-    double a = 0.5, b = 1.0-a; // new input gets less weight
+    src1.convertTo(src1,CV_32FC3);
+    double a = 0.5; // new input gets less weight
     // apply simple linear blending operation
-    addWeighted(src0,a,src1,b,0.0,model0);
-    src0 = model0.clone();
+    addWeighted(model0,a,src1,1.0-a,0.0,model0);
+
   }
+  // convert back to uchar for bs operator
+  model0.convertTo(model0,CV_8UC3);
+  // initialize the background model
+  pMOG2->operator()(model0,fgMaskMOG2);
   bgSet = true;
   cout << "Initial background is set.\n"; //INFO//
 }
@@ -224,9 +234,6 @@ void segObjects()
 void processVideo(char* videoFilename)
 {
   VideoCapture capture(videoFilename);
-
-  // initialize background model with EMPTY frame
-  pMOG2->operator()( model0,fgMaskMOG2 );
   // open video file
   if(!capture.isOpened())
   {
@@ -235,9 +242,7 @@ void processVideo(char* videoFilename)
     exit(EXIT_FAILURE);
   }
   cout << "Processing video... (enter ESC or 'q' to quit)\n";                //INFO//
-
   frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
-  // read input data. ESC or 'q' for quitting.
   while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
   {      
     if(!capture.read(frame))
@@ -247,8 +252,8 @@ void processVideo(char* videoFilename)
     }
     frameID = capture.get(CV_CAP_PROP_POS_FRAMES);
     double p = 100*(frameID/capture.get(CV_CAP_PROP_FRAME_COUNT));
-    // get foreground mask and update the background model
-    pMOG2->operator()(frame, fgMaskMOG2);
+    // get foreground mask and update the background model    
+    pMOG2->operator()(frame,fgMaskMOG2);
     // write frame number on the current frame
     stringstream ss;
     rectangle(frame, cv::Point(10, 2), cv::Point(100,20),
@@ -271,9 +276,8 @@ void processVideo(char* videoFilename)
       exit(EXIT_FAILURE);                            //
     }                                                //
     // quit upon user input                          //
-    keyboard = waitKey( 27 );                        // INFO //
+    keyboard = waitKey( 1 );                         // INFO //
   }
-
   // delete capture object
   capture.release();
   cout << "Fin!\n";  //INFO//
