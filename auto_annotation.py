@@ -14,6 +14,7 @@ gndTruth= np.loadtxt('FlowerNumbers_StartFrames_EndFrames_july_16th_2014_moth2.c
 # get moth pos
 mx = traj[:,0]
 my = traj[:,1]
+
 ################################################
 ## remove last flower for this data set ##
 fData = np.delete(fData,36,0)
@@ -30,6 +31,7 @@ ax.scatter(fData[:,0],fData[:,1],s=5,c='g',marker="o",label="flowers")
 
 # find points in traj which are D within each flower
 p_per_fData = [0]*len(fData)
+timer_fData = [0]*len(fData)
 for i in range(0,len(fData)):
   # get ith flower
   # find m coords within D of flower center
@@ -42,7 +44,11 @@ for i in range(0,len(fData)):
   c = plt.Circle((fx,fy),DIST_THRESH,color='r',fill=False)
   plt.gcf().gca().add_artist(c)
 
-
+    ## TODO ##
+  # for p in ppfData:
+  #   count sequential frames (for now use idx to indicate frame no.)
+  #   if time is long enough:
+  #     record this count and idx-count=start in 2-tuple
 
 
     #### INFO ####
