@@ -61,6 +61,7 @@ void drawForeground();
 Point retrieveAvg(vector<int>,int);
 void getCentroid();
 void segObjects();
+void writeToVideo(VideoWriter* outputVideo,bool output_result);
 
 int main(int argc, char* argv[])
 {
@@ -161,7 +162,7 @@ void getCentroid()
                 '\n';
   }
   else
-  {
+  { // Display only last known centriod
     // Write nan to file b/c no detectable object
     //ROS_INFO("Object not found: ignore or reduce threshold");
 #ifdef NAN
@@ -230,17 +231,41 @@ void segObjects()
   getCentroid();
 }
 
+void writeToVideo(VideoWriter* outputVideo,bool output_tracking_result)
+{
+  if(!outputVideo->isOpened())
+  {
+    //error in opening the video output
+    cerr <<"Unable to open output video for writing.\nExiting..." << endl;
+    exit(EXIT_FAILURE);
+  }
+  if(output_tracking_result)
+    outputVideo->write(result);
+  else
+    outputVideo->write(foreground);
+}
+
 // captures frames from a video file, then detects obejects in the foreground and displays them
 void processVideo(char* videoFilename)
 {
   VideoCapture capture(videoFilename);
+  VideoWriter highlighted_fg_video;
+  VideoWriter tracking_result_video;
+
   // open video file
   if(!capture.isOpened())
   {
     //error in opening the video input
-    cerr <<"Unable to read next frame.\nExiting..." << endl;
+    cerr <<"Unable to open input video.\nExiting..." << endl;
     exit(EXIT_FAILURE);
   }
+  // prepare output video file
+  int codecType   = static_cast<int>( capture.get(CV_CAP_PROP_FOURCC) ); // make output video have same codec type as input
+  Size frameSize  = Size( (int)capture.get(CV_CAP_PROP_FRAME_WIDTH),(int)capture.get(CV_CAP_PROP_FRAME_HEIGHT) );
+  highlighted_fg_video.open("highlighted_fg.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+  tracking_result_video.open("tracking_result.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+
+  // capture and process frames
   cout << "Processing video... (enter ESC or 'q' to quit)\n";                //INFO//
   frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
   while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
@@ -265,6 +290,11 @@ void processVideo(char* videoFilename)
     //cout << percentProgress << endl;
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
+    // add result and hi-fg frames to video output
+    writeToVideo(&highlighted_fg_video,false);
+    writeToVideo(&tracking_result_video,true);
+
+    // display result
     try                                              // INFO //
     {                                                //
       imshow("Highlighted Foreground", foreground);  //
@@ -276,7 +306,8 @@ void processVideo(char* videoFilename)
       exit(EXIT_FAILURE);                            //
     }                                                //
     // quit upon user input                          //
-    keyboard = waitKey( 1 );                         // INFO //
+//    keyboard = waitKey( 10 );                        // INFO //
+    keyboard = waitKey( (int)1000.0/capture.get(CV_CAP_PROP_FPS) ); // delay in millisec
   }
   // delete capture object
   capture.release();
