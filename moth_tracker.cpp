@@ -21,6 +21,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/background_segm.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 //c++
 #include <stdio.h>
 #include <iostream>
@@ -37,9 +38,18 @@ using namespace std;
 using namespace boost;
 
 int const DEPTH = CV_16S;// 16short is used to prevent overflow during gradient cal
-int SCALE = 1,DELTA = 0;
-int RADIUS = 5;
-int MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
+int const SCALE = 1,DELTA = 0,RADIUS = 5;
+int const MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
+/* Calibration parameters used to undistort points */
+Matx33f const camera_mat( 233.7251, 0,         323.25797,\
+                          0,        233.01072, 238.90632,\
+                          0,        0,          1 );
+Matx33f new_camera_mat(0,0,0,\
+                       0,0,0,\
+                       0,0,0);
+Matx14f const dist_coeff( -.14484,0.01317,-0.00036,0.00091);
+
+
 int keyboard, frameID;
 
 bool bgSet; // flag indicates background averaging
@@ -60,6 +70,7 @@ void draw(Point);
 void drawForeground();
 Point retrieveAvg(vector<int>,int);
 void getCentroid();
+void rectify_src(Mat*,Mat*);
 void segObjects();
 void writeToVideo(VideoWriter* outputVideo,bool output_result);
 
@@ -78,7 +89,7 @@ int main(int argc, char* argv[])
   //initialize background
   getBGModel(argv[1]);
   //input data coming from a video
-  if(bgSet){ processVideo(argv[1]); }
+//  if(bgSet){ processVideo(argv[1]); }
 
   //destroy GUI windows
   destroyAllWindows();
@@ -181,7 +192,7 @@ void getCentroid()
 // the average intensity.
 void getBGModel(char* videoFilename)
 {
-  Mat src1,src0;
+  Mat src,rectified_src;
   VideoCapture capture(videoFilename);
   // check if file can be read
   if(!capture.isOpened())
@@ -193,33 +204,51 @@ void getBGModel(char* videoFilename)
 
   cout << "Obtaining initial background...\n"; //INFO//
   // read first frame
-  if(!capture.read(src1))
+  if(!capture.read(src))
   {
     cerr <<"Unable to read next frame.\nExiting..." << endl;
     exit(EXIT_FAILURE);
-  }
-  // initialize model0: still range [0,255]; for imshow, use src1.convertTo(model0,CV_32FC3, 1.0/255)
-  src1.convertTo(model0,CV_32FC3);
+  }  
+  // retreive new camera matrix to get uncropped rectified image
+  new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,src.size(),1);
+  // undistort raw input
+  rectify_src(&src,&rectified_src);
+  // initialize model0: still range [0,255]; for imshow, use src.convertTo(model0,CV_32FC3, 1.0/255)
+  rectified_src.convertTo(model0,CV_32FC3);
   while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
   {
     // read new frame as second source img
-    if(!capture.read(src1))
+    if(!capture.read(src))
     {
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
-    src1.convertTo(src1,CV_32FC3);
+    // undistort raw input
+    rectify_src(&src,&rectified_src);
+    rectified_src.convertTo(rectified_src,CV_32FC3);
     double a = 0.5; // new input gets less weight
     // apply simple linear blending operation
-    addWeighted(model0,a,src1,1.0-a,0.0,model0);
+    addWeighted(model0,a,rectified_src,1.0-a,0.0,model0);
 
   }
   // convert back to uchar for bs operator
   model0.convertTo(model0,CV_8UC3);
+  imshow("frame",model0); keyboard = waitKey(0);
   // initialize the background model
   pMOG2->operator()(model0,fgMaskMOG2);
   bgSet = true;
   cout << "Initial background is set.\n"; //INFO//
+}
+
+void rectify_src(Mat* src,Mat* rect)
+{
+  try
+  { undistort(*src,*rect,camera_mat,dist_coeff,new_camera_mat); }
+  catch(Exception)
+  {
+    cerr <<"Unable to undistort frame.\nExiting..." << endl;
+    exit(EXIT_FAILURE);
+  }
 }
 
 // finds objects in the foreground of a frame, then displays their location
@@ -305,8 +334,7 @@ void processVideo(char* videoFilename)
       cerr <<"failed to display result" << endl;     //
       exit(EXIT_FAILURE);                            //
     }                                                //
-    // quit upon user input                          //
-//    keyboard = waitKey( 10 );                        // INFO //
+    // quit upon user input                          // INFO //
     keyboard = waitKey( (int)1000.0/capture.get(CV_CAP_PROP_FPS) ); // delay in millisec
   }
   // delete capture object
