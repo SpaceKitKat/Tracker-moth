@@ -446,11 +446,14 @@ void processVideo(char* videoFilename)
   // prepare output video file
   int codecType   = static_cast<int>( capture.get(CV_CAP_PROP_FOURCC) ); // make output video have same codec type as input
   Size frameSize  = Size( (int)capture.get(CV_CAP_PROP_FRAME_WIDTH),(int)capture.get(CV_CAP_PROP_FRAME_HEIGHT) );
-  highlighted_fg_video.open("highlighted_fg.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
-  tracking_result_video.open("tracking_result.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+  string hvideo_name = "highlighted_fg.avi", tvideo_name = "tracking_result.avi";
+  highlighted_fg_video.open(hvideo_name ,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+  tracking_result_video.open(tvideo_name,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
 
   // capture and process frames
   cout << "Processing video... (enter ESC or 'q' to quit)\n";                //INFO//
+  cout << "Recording video: " << hvideo_name << " and " << tvideo_name << endl;
+
   frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
   while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
   {
