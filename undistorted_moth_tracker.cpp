@@ -44,7 +44,7 @@ typedef numeric_limits<float> LIMITS;
 
 int const DEPTH = CV_16S;// 16short is used to prevent overflow during gradient cal
 int const SCALE = 1,DELTA = 0,RADIUS = 5;
-int const MIN_AREA = 50;  // *** increasing this value --> more spotty trajectory *** //
+int const MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
 int const MAX_AREA = 500;
 int const ROI_HEIGHT = 50;
 
@@ -391,7 +391,7 @@ void rectifySrc(Mat* src,Mat* rect)
 void segObjects()
 {
   Mat mask = fgMaskMOG2.clone(); // avoid altering fgmask --> make deep copy
-  findContours( mask, contours, heirarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
+  findContours( mask, contours, heirarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
   drawForeground();
   reportCentroid();
 }
@@ -446,11 +446,15 @@ void processVideo(char* videoFilename)
   // prepare output video file
   int codecType   = static_cast<int>( capture.get(CV_CAP_PROP_FOURCC) ); // make output video have same codec type as input
   Size frameSize  = Size( (int)capture.get(CV_CAP_PROP_FRAME_WIDTH),(int)capture.get(CV_CAP_PROP_FRAME_HEIGHT) );
-  highlighted_fg_video.open("highlighted_fg.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
-  tracking_result_video.open("tracking_result.avi",codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+  string hvideo_name = "highlighted_fg.avi", tvideo_name = "tracking_result.avi";
+  highlighted_fg_video.open(hvideo_name ,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
+  tracking_result_video.open(tvideo_name,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
 
   // capture and process frames
   cout << "Processing video... (enter ESC or 'q' to quit)\n";                //INFO//
+  cout << "Recording video: " << hvideo_name << " and " << tvideo_name << endl;
+  cout << "Object threshold: " << lexical_cast<string>(MIN_AREA) << "pel < obj_area < " << lexical_cast<string>(MAX_AREA) << "pel\n";
+
   frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
   while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
   {
@@ -488,7 +492,7 @@ void processVideo(char* videoFilename)
       exit(EXIT_FAILURE);                            //
     }                                                //
     // quit upon user input                          // INFO //
-    keyboard = waitKey((int)1000.0/capture.get(CV_CAP_PROP_FPS) ); // delay in millisec
+    keyboard = waitKey(1);//(int)1000.0/capture.get(CV_CAP_PROP_FPS) ); // delay in millisec
   }
   // delete capture object
   capture.release();

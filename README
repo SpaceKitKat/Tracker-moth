@@ -1,0 +1,52 @@
+This file describes how to use the moth_tracker executable to generate
+tracked moth trajectories.
+Notation description: 
+	The command templates given use <> to denote what arguments the
+user should pass to the program -- like place holders. Do not include the
+<> symbols in the arguments that you pass. 
+
+Dependencies:
+  opencv library
+    https://help.ubuntu.com/community/OpenCV
+  boost library
+    sudo apt-get install libboost-all-dev
+
+
+After downloading "moth_tracker":
+  check permissions
+    $ l -l moth_tracker
+  make sure the output looks like
+   -rwxrwxrwx ... moth_tracker
+  if it doesn't, then run 
+    $ sudo chmod 777 moth_tracker
+
+Before running "moth_tracker":
+  make sure that the aforementioned dependencied are installed on your
+machine 
+
+Running "moth_tracker":
+  default - does not display video output, does not perform undistortion
+    $ ./moth_tracker <input_video_file_path> <output_text_file_path>
+  with options - use "--display=n" or "-d n" to select display feature
+	         use "--undistort=n" or "-u n" to select undistortion
+		 where n is either 1 (active) or 0 (inactive)
+		 NOTE: options should be passed AFTER initial arguments
+    # this command will only output undistorted xy-data
+    $ ./moth_tracker <input_video_file_path> <output_text_file_path> -u 1
+    # this command will display video and output undistorted xy-data
+    $ ./moth_tracker <input_video_file_path> <output_text_file_path> -d 1 -u 1
+	When passing optional arguments (to display or select
+undistortion), please use one of the formats:
+	--display=1
+	-d 1
+	--display=0
+	-d 0
+	--undistort=1
+	-u 1	
+	--undistort=0
+	-u 0	
+	Note that these arguments are sensitive to white space, so follow
+these examples closely.
+
+
+

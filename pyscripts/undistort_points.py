@@ -70,6 +70,11 @@ def main():
   plot_data(undist_h_data,m_data)
   #plot_data(dist_h_data,m_data)
 
+  # save to csv
+  np.savetxt("undistorted_data.csv",undist_h_data,delimiter=",")
+
+
+
   return
 
 

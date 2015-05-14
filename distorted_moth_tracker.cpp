@@ -181,7 +181,7 @@ void getCentroid()
 // the average intensity.
 void getBGModel(char* videoFilename)
 {
-  Mat src1,src0;
+  Mat src1;
   VideoCapture capture(videoFilename);
   // check if file can be read
   if(!capture.isOpened())
