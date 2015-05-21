@@ -8,10 +8,8 @@
  **/
 
 
-/*** @TODO: add option for displaying output
-            "" for undistorting
-            output files in csv
-
+/*** @TODO: test display frame progress -->306
+            test bg init
 ***/
 
 //NOTES:
@@ -29,11 +27,12 @@
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
+#include <cstdio> //timing test
+#include <ctime>
 #include <boost/lexical_cast.hpp> //  string concatination with doubles
 #include <boost/program_options.hpp> // command line options: edit CMakeLists.txt to include boost libs
 #include <math.h>
 #include <limits.h> // access quiet NAN
-#include <algorithm> // for max heap
 #include <vector>
 
 
@@ -43,12 +42,13 @@ using namespace cv;
 using namespace std;
 using namespace boost;
 
-typedef numeric_limits<float> LIMITS;
+typedef numeric_limits<float> FLT;
+typedef numeric_limits<double> DBL;
 namespace op=program_options;
 
 int const DEPTH = CV_16S;// 16short is used to prevent overflow during gradient cal
 int const SCALE = 1,DELTA = 0,RADIUS = 5;
-int const MIN_AREA = 100;  // *** increasing this value --> more spotty trajectory *** //
+int const MIN_AREA = 50;  // *** increasing this value --> more spotty trajectory *** //
 int const MAX_AREA = 1000; // decreasing this will interfere with distorted video tracking
 int const ROI_HEIGHT = 50;
 
@@ -68,9 +68,6 @@ Matx33f new_camera_mat(0,0,0,\
                        0,0,0);
 
 
-int keyboard, frameID;
-
-bool bgSet; // flag indicates background averaging
 
 Mat model0, frame, frame_rectified, fgMaskMOG2, result,foreground; // binary mask containing foreground
 Ptr<BackgroundSubtractor> pMOG2;
@@ -81,22 +78,26 @@ RNG range(12345); // used to calc contours
 Point centroid; // obj center
 ofstream data_out;
 
-int display;
-int undistort_points;
+int display, undistort_points; // flags for command line options
+int keyboard, frameID;
+bool testing;
+double duration;
+char option = 'a';
+
 
 // function prototypes
-void dist_getBGModel(char* video_file);
-void undist_getBGModel(char* video_file);
+void test(char* video_file);
 void draw(Point);
 void drawForeground();
 Point retrieveAvg(vector<int>,int);
-Point2f findObjectCentroid();
 bool isNan(float);
 void reportCentroid();
 void rectifySrc(Mat*,Mat*);
 void segObjects();
 void writeToVideo(VideoWriter* outputVideo,bool output_result);
-void framePercentProgress(VideoCapture* cap,int);
+void displayPercentProgress(VideoCapture* cap,int);
+bool dist_getBGModel(char* video_file);
+bool undist_getBGModel(char* video_file);
 void dist_processVideo(char* video_file);
 void undist_processVideo(char* video_file);
 
@@ -104,6 +105,7 @@ void undist_processVideo(char* video_file);
 int main(int argc, char* argv[])
 {
   pMOG2 = new BackgroundSubtractorMOG2(10,16,false); //MOG2 approach
+  testing = false;
 
   //check for the input parameter correctness
   if(argc > 7)
@@ -123,31 +125,46 @@ int main(int argc, char* argv[])
   op::store(op::parse_command_line(argc,argv,desc),var_map);
   op::notify(var_map);
 
-//  if(display){ cout << "option 1 works\n"; } //INFO//
-//  if(undistort_points){ cout << "option 2 works\n"; }
+//--(!) testing
+//  test(argv[1]);
 
   //create data file
   data_out.open(argv[2]);
   //initialize background
   if(undistort_points)
   {
-    undist_getBGModel(argv[1]);
-//    bgSet=true;
     //input data coming from a video
-    if(bgSet){ undist_processVideo(argv[1]); }
+    if( undist_getBGModel(argv[1]) ){ undist_processVideo(argv[1]); }
   }
   else
   {
-    dist_getBGModel(argv[1]);
-   //  bgSet=true;
     //input data coming from a video
-    if(bgSet){ dist_processVideo(argv[1]); }
+    if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
   }
   //destroy GUI windows
   destroyAllWindows();
   data_out.close();
   return EXIT_SUCCESS;
 }
+
+void test(char* filename)
+{
+  testing=true;
+// User commandline options
+//  if(display){ cout << "option 1 works\n"; } //INFO//
+//  if(undistort_points){ cout << "option 2 works\n"; }
+// Background intialization
+  cout << "bg init: " << boolalpha << dist_getBGModel(filename) << endl;
+  cout.precision(DBL::digits10);
+  if(option == 'a'){ cout << "total averaging time for matrix addition: " << fixed << duration << endl; }
+  if(option == 'b'){ cout << "total averaging time for addWeighted(): " << fixed << duration << endl; }
+  dist_processVideo(filename);
+
+
+  testing=false;
+}
+
+
 
 // draws a rectangle or cross centered at a point
 void draw(Point pt)
@@ -235,20 +252,11 @@ void reportCentroid()
 
 #ifdef NAN
     data_out << lexical_cast<string>(frameID) +","+ \
-                lexical_cast<string>(LIMITS::quiet_NaN()) +","+ \
-                lexical_cast<string>(LIMITS::quiet_NaN()) << \
+                lexical_cast<string>(FLT::quiet_NaN()) +","+ \
+                lexical_cast<string>(FLT::quiet_NaN()) << \
                 '\n';
 #endif
   }
-
-// non-averaging (get max)
-//  centroid=findObjectCentroid();
-//  // Write position to file
-//  data_out << lexical_cast<string>(frameID) +","+ \
-//              lexical_cast<string>(centroid.x) +","+ \
-//              lexical_cast<string>(centroid.y) << \
-//              '\n';
-
 
   draw(centroid);
 //  printf( "[%d]\t\t(%d,%d)\n", frameID, centroid.x, centroid.y );  //INFO//
@@ -290,10 +298,12 @@ void writeToVideo(VideoWriter* outputVideo,bool output_tracking_result)
     outputVideo->write(foreground);
 }
 
-void framePercentProgress(VideoCapture* cap, int lc)
+// This function displays percent progress onto either the frame or the terminal. Percent progress
+// is determined by the number of frames processed over total frame count.
+void displayPercentProgress(VideoCapture* cap, int lc)
 {
   // get current frame position
-  bool can_print=(lc%10==0);
+  bool can_print=(lc%( (int)round(cap->get(CV_CAP_PROP_FRAME_COUNT)/100.0) )==0);
   frameID = cap->get(CV_CAP_PROP_POS_FRAMES);
   double p = 100*(frameID/cap->get(CV_CAP_PROP_FRAME_COUNT));
 
@@ -301,7 +311,8 @@ void framePercentProgress(VideoCapture* cap, int lc)
   stringstream ss;
   rectangle(frame, cv::Point(10, 2), cv::Point(100,20),
             cv::Scalar(255,255,255), -1);
-  ss << (int)(p-fmod(p,1));    // percent progress floored in the ones place
+//  ss << (int)(p-fmod(p,1));    // percent progress floored in the ones place
+  ss << (int)round(p);    // percent progress rounded
   string percentProgress = ss.str()+"%";
   putText(frame, percentProgress.c_str(), cv::Point(15, 15),
           FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(0,0,0));
@@ -313,10 +324,13 @@ void framePercentProgress(VideoCapture* cap, int lc)
 // Averages all frames within video file into one image which represents the initial background model
 // NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
 // the average intensity.
-void dist_getBGModel(char* videoFilename)
+bool dist_getBGModel(char* videoFilename)
 {
-  Mat src1;
+  Mat src1;double beta = 1.0; // new input gets less weight
+  int nFrames;
+  clock_t start;
   VideoCapture capture(videoFilename);
+
   // check if file can be read
   if(!capture.isOpened())
   {
@@ -334,6 +348,10 @@ void dist_getBGModel(char* videoFilename)
   }
   // initialize model0: still range [0,255]; for imshow, use src1.convertTo(model0,CV_32FC3, 1.0/255)
   src1.convertTo(model0,CV_32FC3);
+
+  //--(!) testing: measure time to average all video frames
+  if(testing){ start = clock(); }
+  // average all frames
   while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
   {
     // read new frame as second source img
@@ -342,25 +360,49 @@ void dist_getBGModel(char* videoFilename)
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
+    nFrames = capture.get(CV_CAP_PROP_POS_FRAMES); // track number of frames read (range from [1:frameCount])
     src1.convertTo(src1,CV_32FC3);
-    double a = 0.5; // new input gets less weight
-    // apply simple linear blending operation
-    addWeighted(model0,a,src1,1.0-a,0.0,model0);
 
+    // weighting: alpha = 1-(1/N), beta=(1/N) N=frame number, alpha+beta = 1
+    beta = 1.0/nFrames;
+    //-- OPTION A:
+    // directly add images and divide by
+    if(option == 'a'){ model0 = (1-beta)*model0 + beta*src1; }
+    //-- OPTION B:
+    // apply simple linear blending operation
+    if(option == 'b'){ addWeighted(model0,1.0-beta,src1,beta,0.0,model0); }
   }
+
+  //--(!) testing
+  if(testing){ duration = (clock()-start)/(double)CLOCKS_PER_SEC; }
+
   // convert back to uchar for bs operator
   model0.convertTo(model0,CV_8UC3);
   // initialize the background model
   pMOG2->operator()(model0,fgMaskMOG2);
-  bgSet = true;
   cout << "Initial background is set.\n"; //INFO//
+
+  //--(!) testing
+  if(testing)
+  {
+    try                                              // INFO //
+    { imshow("model0", model0); }                    //
+    catch(Exception &e)                              //
+    {                                                //
+      cerr <<"failed to display initial model" << endl;
+      exit(EXIT_FAILURE);                            //
+    }
+    keyboard = waitKey(0);
+  }
+
+  return true;
 
 }
 
 // Averages all frames within video file into one image which represents the initial background model
 // NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
 // the average intensity.
-void undist_getBGModel(char* videoFilename)
+bool undist_getBGModel(char* videoFilename)
 {
   Mat src,rectified_src;
   VideoCapture capture(videoFilename);
@@ -403,10 +445,26 @@ void undist_getBGModel(char* videoFilename)
   }
   // convert back to uchar for bs operator
   model0.convertTo(model0,CV_8UC3);
+//  imshow("frame",model0); keyboard = waitKey(0);
   // initialize the background model
   pMOG2->operator()(model0,fgMaskMOG2);
-  bgSet = true;
   cout << "Initial background is set.\n"; //INFO//
+
+  //--(!) testing
+  if(testing)
+  {
+    try                                              // INFO //
+    { imshow("model0", model0); }                    //
+    catch(Exception &e)                              //
+    {                                                //
+      cerr <<"failed to display initial model" << endl;
+      exit(EXIT_FAILURE);                            //
+    }
+    keyboard = waitKey(0);
+  }
+
+
+  return true;
 }
 
 // captures frames from a video file, then detects obejects in the foreground and displays them; uses distorted frames
@@ -446,10 +504,13 @@ void dist_processVideo(char* videoFilename)
     }
 
   //write progress
-    framePercentProgress(&capture,++loopcount);
+    displayPercentProgress(&capture,++loopcount);
 
     // get foreground mask and update the background model
     pMOG2->operator()(frame,fgMaskMOG2);
+
+    //--(!) testing
+    if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
 
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
@@ -523,10 +584,15 @@ void undist_processVideo(char* videoFilename)
     rectifySrc(&frame,&frame_rectified);
 
   //write progress
-    framePercentProgress(&capture,++loopcount);
+    displayPercentProgress(&capture,++loopcount);
 
     // get foreground mask and update the background model
     pMOG2->operator()(frame_rectified,fgMaskMOG2);
+
+    //--(!) testing
+    if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
+
+
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
 //    // add result and hi-fg frames to video output
