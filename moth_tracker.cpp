@@ -96,10 +96,8 @@ void rectifySrc(Mat*,Mat*);
 void segObjects();
 void writeToVideo(VideoWriter* outputVideo,bool output_result);
 void displayPercentProgress(VideoCapture* cap,int);
-bool dist_getBGModel(char* video_file);
-bool undist_getBGModel(char* video_file);
-void dist_processVideo(char* video_file);
-void undist_processVideo(char* video_file);
+bool getBGModel(char* video_file);
+void processVideo(char* video_file);
 
 
 int main(int argc, char* argv[])
@@ -127,21 +125,11 @@ int main(int argc, char* argv[])
 
 //--(!) testing
 //  test(argv[1]);
+  //create data file
+  data_out.open(argv[2]);
+  //initialize background and process video
+  if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
 
-  if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
-//  //create data file
-//  data_out.open(argv[2]);
-//  //initialize background
-//  if(undistort_points)
-//  {
-//    //input data coming from a video
-//    if( undist_getBGModel(argv[1]) ){ undist_processVideo(argv[1]); }
-//  }
-//  else
-//  {
-//    //input data coming from a video
-//    if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
-//  }
   //destroy GUI windows
   destroyAllWindows();
   data_out.close();
@@ -155,11 +143,11 @@ void test(char* filename)
 //  if(display){ cout << "option 1 works\n"; } //INFO//
 //  if(undistort_points){ cout << "option 2 works\n"; }
 // Background intialization
-  cout << "bg init: " << boolalpha << dist_getBGModel(filename) << endl;
+  cout << "bg init: " << boolalpha << getBGModel(filename) << endl;
   cout.precision(DBL::digits10);
   if(option == 'a'){ cout << "total averaging time for matrix addition: " << fixed << duration << endl; }
   if(option == 'b'){ cout << "total averaging time for addWeighted(): " << fixed << duration << endl; }
-  dist_processVideo(filename);
+  processVideo(filename);
 
 
   testing=false;
@@ -197,7 +185,6 @@ Point retrieveAvg(vector<int> a,int asize)
   Point avg; //avg.x=0; avg.y=0;
   Moments mu;
 
-// *** cleaned up ***
   // calculate centroids of each contour
   for(int i=0; i<asize; i++)
   {
@@ -207,7 +194,6 @@ Point retrieveAvg(vector<int> a,int asize)
     Point ci = Point2f( mu.m10/mu.m00, mu.m01/mu.m00 );
     // skip averaging if less than two candidates
     if(asize == 1){ return ci; }
-//    return ci;
     avg.x += ci.x; avg.y += ci.y;
   }
   avg.x /= asize; avg.y /= asize;
@@ -249,8 +235,6 @@ void reportCentroid()
   else
   { // Display only last known centriod
     // Write nan to file b/c no detectable object
-    //ROS_INFO("Object not found: ignore or reduce threshold");
-
 #ifdef NAN
     data_out << lexical_cast<string>(frameID) +","+ \
                 lexical_cast<string>(FLT::quiet_NaN()) +","+ \
@@ -325,7 +309,7 @@ void displayPercentProgress(VideoCapture* cap, int lc)
 // The initial background model represents an empty frame which is passed to background subtractor.
 // NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
 // the average intensity.
-bool dist_getBGModel(char* videoFilename)
+bool getBGModel(char* videoFilename)
 {
   Mat src,rectified_src;double beta = 1.0; // new input gets less weight
   int nFrames;
@@ -407,7 +391,7 @@ bool dist_getBGModel(char* videoFilename)
 }
 
 // captures frames from a video file, then detects obejects in the foreground and displays them; uses distorted frames
-void dist_processVideo(char* videoFilename)
+void processVideo(char* videoFilename)
 {
   VideoCapture capture(videoFilename);
   VideoWriter highlighted_fg_video;
@@ -490,84 +474,3 @@ void dist_processVideo(char* videoFilename)
   capture.release();
   cout << "Fin!\n";  //INFO//
 }
-
-// captures frames from a video file, then detects obejects in the foreground and displays them; uses undistorted frames
-void undist_processVideo(char* videoFilename)
-{
-  VideoCapture capture(videoFilename);
-  VideoWriter highlighted_fg_video;
-  VideoWriter tracking_result_video;
-  int loopcount=0;
-
-  // open video file
-  if(!capture.isOpened())
-  {
-    //error in opening the video input
-    cerr <<"Unable to open input video.\nExiting..." << endl;
-    exit(EXIT_FAILURE);
-  }
-  // prepare output video file
-  int codecType   = static_cast<int>( capture.get(CV_CAP_PROP_FOURCC) ); // make output video have same codec type as input
-  Size frameSize  = Size( (int)capture.get(CV_CAP_PROP_FRAME_WIDTH),(int)capture.get(CV_CAP_PROP_FRAME_HEIGHT) );
-  string hvideo_name = "highlighted_fg.avi", tvideo_name = "tracking_result.avi";
-  highlighted_fg_video.open(hvideo_name ,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
-  tracking_result_video.open(tvideo_name,codecType,capture.get(CV_CAP_PROP_FPS),frameSize,true);
-
-  // capture and process frames
-  cout << "Processing undistorted video...\n";              //INFO//
-  cout << "Recording video: " << hvideo_name << " and " << tvideo_name << endl;
-  cout << "Object threshold: " << lexical_cast<string>(MIN_AREA) << "pel < obj_area < " << lexical_cast<string>(MAX_AREA) << "pel\n";
-
-  frameID = capture.get(CV_CAP_PROP_POS_FRAMES); // used to indicate progress in video process
-  while( frameID < capture.get(CV_CAP_PROP_FRAME_COUNT)-2 && ((char)keyboard != 'q' && (char)keyboard != 27) )
-  {
-    if(!capture.read(frame))
-    {
-      cerr <<"Unable to read next frame.\nExiting..." << endl;
-      exit(EXIT_FAILURE);
-    }
-
-    // retreive new camera matrix to get uncropped rectified frame
-    new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,frame.size(),1);
-    // undistort raw input
-    rectifySrc(&frame,&frame_rectified);
-
-  //write progress
-    displayPercentProgress(&capture,++loopcount);
-
-    // get foreground mask and update the background model
-    pMOG2->operator()(frame_rectified,fgMaskMOG2);
-
-    //--(!) testing
-    if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
-
-
-    // segment objects larger than maximum threshold (ignore noise)
-    segObjects();
-//    // add result and hi-fg frames to video output
-    writeToVideo(&highlighted_fg_video,false);
-    writeToVideo(&tracking_result_video,true);
-
-    if(display)
-    {
-      // display result
-      try                                              // INFO //
-      {                                                //
-        imshow("Highlighted Foreground", foreground);  //
-        imshow("Result", result);                      //
-      }                                                //
-      catch(Exception &e)                              //
-      {                                                //
-        cerr <<"failed to display result" << endl;     //
-        exit(EXIT_FAILURE);                            //
-      }                                                //
-      // quit upon user input                          // INFO //
-      keyboard = waitKey(1);//(int)1000.0/capture.get(CV_CAP_PROP_FPS) ); // delay in millisec
-    }
-  }
-  // delete capture object
-  capture.release();
-  cout << "Fin!\n";  //INFO//
-
-}
-
