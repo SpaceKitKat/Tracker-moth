@@ -128,19 +128,20 @@ int main(int argc, char* argv[])
 //--(!) testing
 //  test(argv[1]);
 
-  //create data file
-  data_out.open(argv[2]);
-  //initialize background
-  if(undistort_points)
-  {
-    //input data coming from a video
-    if( undist_getBGModel(argv[1]) ){ undist_processVideo(argv[1]); }
-  }
-  else
-  {
-    //input data coming from a video
-    if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
-  }
+  if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
+//  //create data file
+//  data_out.open(argv[2]);
+//  //initialize background
+//  if(undistort_points)
+//  {
+//    //input data coming from a video
+//    if( undist_getBGModel(argv[1]) ){ undist_processVideo(argv[1]); }
+//  }
+//  else
+//  {
+//    //input data coming from a video
+//    if( dist_getBGModel(argv[1]) ){ dist_processVideo(argv[1]); }
+//  }
   //destroy GUI windows
   destroyAllWindows();
   data_out.close();
@@ -309,103 +310,28 @@ void displayPercentProgress(VideoCapture* cap, int lc)
 
   // write frame number out of frame count on the current frame
   stringstream ss;
-  rectangle(frame, cv::Point(10, 2), cv::Point(100,20),
+  rectangle(result, cv::Point(10, 2), cv::Point(100,20),
             cv::Scalar(255,255,255), -1);
 //  ss << (int)(p-fmod(p,1));    // percent progress floored in the ones place
   ss << (int)round(p);    // percent progress rounded
   string percentProgress = ss.str()+"%";
-  putText(frame, percentProgress.c_str(), cv::Point(15, 15),
+  putText(result, percentProgress.c_str(), cv::Point(15, 15),
           FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(0,0,0));
   if(!display && can_print){ cout << percentProgress << endl; }
 
 }
 
-
-// Averages all frames within video file into one image which represents the initial background model
+// Averages all frames within video file into one image which represents the initial background model.
+// The initial background model represents an empty frame which is passed to background subtractor.
 // NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
 // the average intensity.
 bool dist_getBGModel(char* videoFilename)
 {
-  Mat src1;double beta = 1.0; // new input gets less weight
+  Mat src,rectified_src;double beta = 1.0; // new input gets less weight
   int nFrames;
   clock_t start;
   VideoCapture capture(videoFilename);
 
-  // check if file can be read
-  if(!capture.isOpened())
-  {
-    cerr << "Unable to open video file: " << videoFilename << endl;
-    exit(EXIT_FAILURE);
-  }
-  cout << "Frame count: " << capture.get(CV_CAP_PROP_FRAME_COUNT) << endl;   //INFO//
-
-  cout << "Obtaining initial background...\n"; //INFO//
-  // read first frame
-  if(!capture.read(src1))
-  {
-    cerr <<"Unable to read next frame.\nExiting..." << endl;
-    exit(EXIT_FAILURE);
-  }
-  // initialize model0: still range [0,255]; for imshow, use src1.convertTo(model0,CV_32FC3, 1.0/255)
-  src1.convertTo(model0,CV_32FC3);
-
-  //--(!) testing: measure time to average all video frames
-  if(testing){ start = clock(); }
-  // average all frames
-  while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
-  {
-    // read new frame as second source img
-    if(!capture.read(src1))
-    {
-      cerr <<"Unable to read next frame.\nExiting..." << endl;
-      exit(EXIT_FAILURE);
-    }
-    nFrames = capture.get(CV_CAP_PROP_POS_FRAMES); // track number of frames read (range from [1:frameCount])
-    src1.convertTo(src1,CV_32FC3);
-
-    // weighting: alpha = 1-(1/N), beta=(1/N) N=frame number, alpha+beta = 1
-    beta = 1.0/nFrames;
-    //-- OPTION A:
-    // directly add images and divide by
-    if(option == 'a'){ model0 = (1-beta)*model0 + beta*src1; }
-    //-- OPTION B:
-    // apply simple linear blending operation
-    if(option == 'b'){ addWeighted(model0,1.0-beta,src1,beta,0.0,model0); }
-  }
-
-  //--(!) testing
-  if(testing){ duration = (clock()-start)/(double)CLOCKS_PER_SEC; }
-
-  // convert back to uchar for bs operator
-  model0.convertTo(model0,CV_8UC3);
-  // initialize the background model
-  pMOG2->operator()(model0,fgMaskMOG2);
-  cout << "Initial background is set.\n"; //INFO//
-
-  //--(!) testing
-  if(testing)
-  {
-    try                                              // INFO //
-    { imshow("model0", model0); }                    //
-    catch(Exception &e)                              //
-    {                                                //
-      cerr <<"failed to display initial model" << endl;
-      exit(EXIT_FAILURE);                            //
-    }
-    keyboard = waitKey(0);
-  }
-
-  return true;
-
-}
-
-// Averages all frames within video file into one image which represents the initial background model
-// NOTE: the frames are read in as unsigned char type, then converted to floating point type to compute
-// the average intensity.
-bool undist_getBGModel(char* videoFilename)
-{
-  Mat src,rectified_src;
-  VideoCapture capture(videoFilename);
   // check if file can be read
   if(!capture.isOpened())
   {
@@ -421,12 +347,24 @@ bool undist_getBGModel(char* videoFilename)
     cerr <<"Unable to read next frame.\nExiting..." << endl;
     exit(EXIT_FAILURE);
   }
-  // retreive new camera matrix to get uncropped rectified image
-  new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,src.size(),1);
-  // undistort raw input
-  rectifySrc(&src,&rectified_src);
+
+  // preprocess frame
+  if(undistort_points)
+  {
+    // retreive new camera matrix to get uncropped rectified image
+    new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,src.size(),1);
+    // undistort raw input
+    rectifySrc(&src,&rectified_src);
+    // initialize model0: still range [0,255]; for imshow, use src.convertTo(model0,CV_32FC3, 1.0/255)
+    rectified_src.convertTo(model0,CV_32FC3);
+  }
+
   // initialize model0: still range [0,255]; for imshow, use src.convertTo(model0,CV_32FC3, 1.0/255)
-  rectified_src.convertTo(model0,CV_32FC3);
+  src.convertTo(model0,CV_32FC3);
+
+  //--(!) testing: measure time to average all video frames
+  if(testing){ start = clock(); }
+  // average all frames
   while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
   {
     // read new frame as second source img
@@ -435,36 +373,37 @@ bool undist_getBGModel(char* videoFilename)
       cerr <<"Unable to read next frame.\nExiting..." << endl;
       exit(EXIT_FAILURE);
     }
-    // undistort raw input
-    rectifySrc(&src,&rectified_src);
-    rectified_src.convertTo(rectified_src,CV_32FC3);
-    double a = 0.5; // new input gets less weight
-    // apply simple linear blending operation
-    addWeighted(model0,a,rectified_src,1.0-a,0.0,model0);
+    // preprocess frame
+    if(undistort_points)
+    {
+      // undistort raw input
+      rectifySrc(&src,&rectified_src);
+      rectified_src.convertTo(src,CV_32FC3);
+    }
+    nFrames = capture.get(CV_CAP_PROP_POS_FRAMES); // track number of frames read (range from [1:frameCount])
+    src.convertTo(src,CV_32FC3);
 
+    // weighting: alpha = 1-(1/N), beta=(1/N) N=frame number, alpha+beta = 1
+    beta = 1.0/nFrames;
+    //-- OPTION A:
+    // directly add images and divide by
+    if(option == 'a'){ model0 = (1-beta)*model0 + beta*src; }
+    //-- OPTION B:
+    // apply simple linear blending operation
+    if(option == 'b'){ addWeighted(model0,1.0-beta,src,beta,0.0,model0); }
   }
+
+  //--(!) testing
+  if(testing){ duration = (clock()-start)/(double)CLOCKS_PER_SEC; }
+
   // convert back to uchar for bs operator
   model0.convertTo(model0,CV_8UC3);
-//  imshow("frame",model0); keyboard = waitKey(0);
   // initialize the background model
   pMOG2->operator()(model0,fgMaskMOG2);
   cout << "Initial background is set.\n"; //INFO//
 
-  //--(!) testing
-  if(testing)
-  {
-    try                                              // INFO //
-    { imshow("model0", model0); }                    //
-    catch(Exception &e)                              //
-    {                                                //
-      cerr <<"failed to display initial model" << endl;
-      exit(EXIT_FAILURE);                            //
-    }
-    keyboard = waitKey(0);
-  }
-
-
   return true;
+
 }
 
 // captures frames from a video file, then detects obejects in the foreground and displays them; uses distorted frames
@@ -503,8 +442,16 @@ void dist_processVideo(char* videoFilename)
       exit(EXIT_FAILURE);
     }
 
-  //write progress
-    displayPercentProgress(&capture,++loopcount);
+    // preprocess frame
+    if(undistort_points)
+    {
+      // retreive new camera matrix to get uncropped rectified frame
+      new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,frame.size(),1);
+      // undistort raw input
+      rectifySrc(&frame,&frame_rectified);
+      frame=frame_rectified.clone(); // make sure to deep copy
+    }
+
 
     // get foreground mask and update the background model
     pMOG2->operator()(frame,fgMaskMOG2);
@@ -514,6 +461,8 @@ void dist_processVideo(char* videoFilename)
 
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
+    //write progress
+    displayPercentProgress(&capture,++loopcount);
 
     // add result and hi-fg frames to video output
     writeToVideo(&highlighted_fg_video,false);
