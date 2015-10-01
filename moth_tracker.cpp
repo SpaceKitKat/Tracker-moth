@@ -10,6 +10,7 @@
 
 /*** @TODO: test display frame progress -->306
             test bg init
+            annotation
 ***/
 
 //NOTES:

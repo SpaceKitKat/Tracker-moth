@@ -21,19 +21,19 @@ After downloading "moth_tracker":
     $ sudo chmod 777 moth_tracker
 
 Before running "moth_tracker":
-  make sure that the aforementioned dependencied are installed on your
+  make sure that the aforementioned dependencies are installed on your
 machine 
 
 Running "moth_tracker":
-  default - does not display video output, does not perform undistortion
+  (A) default - does not display video output, does not perform undistortion
     $ ./moth_tracker <input_video_file_path> <output_text_file_path>
     To specifying file paths,
 	if file is in same dir as "moth_tracker", use ./<file>
 	otherwise, use ~/<file_path> to reference from home
-	or use //<file_path> to reference from root (this is useful for
+	or use //<file_path> to reference from root (this is useful when 
 accessing peripherals)
 
-  options - choose to display video output or to undistort data
+  (B) toggle undistortion and toggle visualization 
   NOTE: options should be passed AFTER initial arguments
     # this command will only output undistorted xy-data
     $ ./moth_tracker <input_video_file_path> <output_text_file_path> -u 1
