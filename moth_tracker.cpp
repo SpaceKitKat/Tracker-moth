@@ -72,43 +72,54 @@ Matx33f new_camera_mat(0,0,0,\
                        0,0,0,\
                        0,0,0);
 
-
-
-Mat model0, frame, frame_rectified, fgMaskMOG2, result,foreground; // binary mask containing foreground
+// Background subtractor object
 Ptr<BackgroundSubtractor> pMOG2;
-// finding contours
+
+Mat model0 // empty background
+, frame // raw frame
+, frame_rectified // dedistorted frame
+, fgMaskMOG2 // binary foreground mask
+, result // frame with marker on object centroid
+, foreground; // frame with highlighted foreground mask
+
+// objects for finding contours
 vector< vector<Point> > contours,treeCentroids;
 vector< Vec4i > heirarchy;
 RNG range(12345); // used to calc contours
 Point centroid; // obj center
+
+// output video stream
 ofstream data_out;
 
-int display, undistort_points; // flags for command line options
-int keyboard, frameID;
-bool testing;
-double duration;
-char averaging_type = 'a';
+// flags for command line options
+int display;
+int undistort_points;
 
+// frame identifier used to report data
+// and progress
+int frameID;
 
-// function prototypes
-void test(char* video_file);
-void draw(Point);
-void drawForeground();
-Point retrieveAvg(vector<int>,int);
-bool isNan(float);
-void reportCentroid();
-void rectifySrc(Mat*,Mat*);
-void segObjects();
-void writeToVideo(VideoWriter* outputVideo,bool output_result);
-void displayPercentProgress(VideoCapture* cap,int);
+// main processing
 bool getBGModel(char* video_file);
 void processVideo(char* video_file);
+void segObjects();
+void reportCentroid();
+Point retrieveAvg(vector<int>,int);
 
+// helper funcitons
+bool isNan(float);
+void rectifySrc(Mat*,Mat*);
+void writeToVideo(VideoWriter* outputVideo,bool output_result);
+
+// visualization
+void draw(Point);
+void drawForeground();
+void displayPercentProgress(VideoCapture* cap,int);
 
 int main(int argc, char* argv[])
 {
+  clock_t start;
   pMOG2 = new BackgroundSubtractorMOG2(10,16,false); //MOG2 approach
-  testing = false;
 
   //check for the input parameter correctness
   if(argc > 7)
@@ -123,43 +134,23 @@ int main(int argc, char* argv[])
   desc.add_options()
     ("display,d",op::value<int>(& display)->default_value(0),"Display video output option")
     ("undistort,u",op::value<int>(& undistort_points)->default_value(0),"Output undistorted data option")
-    ("compute,c",op::value<char>(& averaging_type)->default_value('a'),"Computation type for frame averaging option")
   ;
   op::variables_map var_map;
   op::store(op::parse_command_line(argc,argv,desc),var_map);
   op::notify(var_map);
 
-//--(!) testing
-  test(argv[1]);
   //create data file
   data_out.open(argv[2]);
   //initialize background and process video
-  // if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
-
+  start = clock();
+  if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
+  cout << "Total processing time: " << fixed << (double)(clock() - start)/CLOCKS_PER_SEC << "s\n";
   //destroy GUI windows
   destroyAllWindows();
   data_out.close();
+  cout << "Fin!\n";  //INFO//
   return EXIT_SUCCESS;
 }
-
-void test(char* filename)
-{
-  testing=true;
-// User commandline options
-//  if(display){ cout << "option 1 works\n"; } //INFO//
-//  if(undistort_points){ cout << "option 2 works\n"; }
-// Background intialization
-  cout << "bg init: " << boolalpha << getBGModel(filename) << endl;
-  cout.precision(DBL::digits10);
-  if(averaging_type == 'a'){ cout << "total averaging time for matrix addition: " << fixed << duration << endl; }
-  if(averaging_type == 'b'){ cout << "total averaging time for addWeighted(): " << fixed << duration << endl; }
-  processVideo(filename);
-
-
-  testing=false;
-}
-
-
 
 // draws a rectangle or cross centered at a point
 void draw(Point pt)
@@ -320,6 +311,7 @@ bool getBGModel(char* videoFilename)
   Mat src,rectified_src;double beta = 1.0; // new input gets less weight
   int nFrames;
   clock_t start;
+  double duration;
   VideoCapture capture(videoFilename);
 
   // check if file can be read
@@ -331,13 +323,17 @@ bool getBGModel(char* videoFilename)
   cout << "Frame count: " << capture.get(CV_CAP_PROP_FRAME_COUNT) << endl;   //INFO//
 
   cout << "Obtaining initial background...\n"; //INFO//
+
+  // measure time to average all video frames
+  start = clock();
+
+  //--(?) why process first frame separately?
   // read first frame
   if(!capture.read(src))
   {
     cerr <<"Unable to read next frame.\nExiting..." << endl;
     exit(EXIT_FAILURE);
   }
-
   // preprocess frame
   if(undistort_points)
   {
@@ -352,8 +348,6 @@ bool getBGModel(char* videoFilename)
   // initialize model0: still range [0,255]; for imshow, use src.convertTo(model0,CV_32FC3, 1.0/255)
   src.convertTo(model0,CV_32FC3);
 
-  //--(!) testing: measure time to average all video frames
-  if(testing){ start = clock(); }
   // average all frames
   while( capture.get(CV_CAP_PROP_POS_FRAMES) < capture.get(CV_CAP_PROP_FRAME_COUNT)-2)
   {
@@ -375,22 +369,18 @@ bool getBGModel(char* videoFilename)
 
     // weighting: alpha = 1-(1/N), beta=(1/N) N=frame number, alpha+beta = 1
     beta = 1.0/nFrames;
-    //-- OPTION A:
-    // directly add images and divide by
-    if(averaging_type == 'a'){ model0 = (1-beta)*model0 + beta*src; }
-    //-- OPTION B:
     // apply simple linear blending operation
-    if(averaging_type == 'b'){ addWeighted(model0,1.0-beta,src,beta,0.0,model0); }
+    addWeighted(model0,1.0-beta,src,beta,0.0,model0);
   }
 
-  //--(!) testing
-  if(testing){ duration = (clock()-start)/(double)CLOCKS_PER_SEC; }
+  duration = (double)(clock()-start)/CLOCKS_PER_SEC;
 
   // convert back to uchar for bs operator
   model0.convertTo(model0,CV_8UC3);
   // initialize the background model
   pMOG2->operator()(model0,fgMaskMOG2);
   cout << "Initial background is set.\n"; //INFO//
+  cout << "Total averaging time: " << fixed << duration << "s\n";
 
   return true;
 
@@ -399,6 +389,7 @@ bool getBGModel(char* videoFilename)
 // captures frames from a video file, then detects obejects in the foreground and displays them; uses distorted frames
 void processVideo(char* videoFilename)
 {
+  int keyboard;
   VideoCapture capture(videoFilename);
   VideoWriter highlighted_fg_video;
   VideoWriter tracking_result_video;
@@ -446,9 +437,6 @@ void processVideo(char* videoFilename)
     // get foreground mask and update the background model
     pMOG2->operator()(frame,fgMaskMOG2);
 
-    //--(!) testing
-    // if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
-
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
     //write progress
@@ -478,5 +466,4 @@ void processVideo(char* videoFilename)
   }
   // delete capture object
   capture.release();
-  cout << "Fin!\n";  //INFO//
 }
