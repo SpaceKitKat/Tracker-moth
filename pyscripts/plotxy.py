@@ -1,35 +1,29 @@
 #!/usr/bin/python
 
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
+def main():
+  if(len(sys.argv) < 4):
+    raise ValueError("Usage: ./plot.py human_data_file comp_data_file output_plot.png")
+    return
+  # verify .txt or .csv and .png
 
-ax = plt.figure().add_subplot(111)
-hum_data = np.loadtxt('h_test.csv',delimiter = ',')
-comp_data = np.loadtxt('undist_test16.txt',delimiter = ',')
+  ax = plt.figure().add_subplot(111)
 
-ax.scatter(hum_data[:,0],hum_data[:,1],s=5,c='c',marker="x",label="human")
-ax.scatter(comp_data[:,1],comp_data[:,2],s=5,c='b',marker=".",label="auto")
-plt.title('Human vs. Computer Generated Moth Trajectory')
-plt.xlabel('x in pels')
-plt.ylabel('y in pels')
-plt.legend(loc='upper right')
-plt.savefig('human_vs_comp.png') #**call before show**#
-# plt.show()
-# new figure is created
+  hum_data = np.loadtxt(sys.argv[1],delimiter = ',')
+  comp_data = np.loadtxt(sys.argv[2],delimiter = ',')
+  hcols = len(hum_data[0])
+  ccols = len(comp_data[0])
 
-# old plotxy.py
-#-ax = plt.figure().add_subplot(111)
-#-hum_data = np.loadtxt('test.csv',delimiter = ',')
-#-comp_data = np.loadtxt('test.txt',delimiter = ',')
-#-
-#-ax.scatter(hum_data[:,0],hum_data[:,1],s=5,c='c',marker="x",label="human")
-#-ax.scatter(comp_data[:,1],comp_data[:,2],s=5,c='b',marker=".",label="auto")
-#-plt.title('Human vs. Computer Generated Moth Trajectory')
-#-plt.xlabel('x in pels')
-#-plt.ylabel('y in pels')
-#-plt.legend(loc='upper right')
-#-plt.savefig('human_vs_comp.png') #**call before show**#
-#-plt.show()
+  ax.scatter(hum_data[:,hcols-2],hum_data[:,hcols-1],s=5,c='c',marker="x",label="human")
+  ax.scatter(comp_data[:,ccols-2],comp_data[:,ccols-1],s=5,c='b',marker=".",label="auto")
+  plt.title('Human vs. Computer Generated Moth Trajectory')
+  plt.xlabel('x in pels')
+  plt.ylabel('y in pels')
+  plt.legend(loc='upper right')
+  plt.savefig(sys.argv[3]) #**call before show**#
+  return
 
-
+main()
