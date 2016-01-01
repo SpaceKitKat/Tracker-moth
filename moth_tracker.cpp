@@ -91,7 +91,6 @@ ofstream data_out;
 
 // flags for command line options
 int display;
-int undistort_points;
 
 // frame identifier used to report data
 // and progress
@@ -123,7 +122,7 @@ int main(int argc, char* argv[])
   if(argc > 7)
   {
     cerr <<"ERROR: see usage\n";
-    cerr <<"USAGE: ./moth_tracker <path_to_video> <output_txt_file> [options][-d 1_or_0,-u 1_or_0]\n";
+    cerr <<"USAGE: ./moth_tracker <path_to_video> <output_txt_file> [options][-d 1_or_0]\n";
     cerr <<"exiting..." << endl;
     return EXIT_FAILURE;
   }
@@ -132,8 +131,7 @@ int main(int argc, char* argv[])
   // sets visualization and dedistortion flags
   op::options_description desc("Program options specified in command line");
   desc.add_options()
-    ("display,d",op::value<int>(& display)->default_value(0),"Display video output option")
-    ("undistort,u",op::value<int>(& undistort_points)->default_value(0),"Output undistorted data option")
+    ("dedistort,d",op::value<int>(& display)->default_value(0),"Record dedistorted video output option")
   ;
   op::variables_map var_map;
   op::store(op::parse_command_line(argc,argv,desc),var_map);
@@ -167,7 +165,7 @@ void drawForeground()
   vector<Mat> components;
 
   // get rgb components
-  if(display && undistort_points){ split(frame_rectified,rgb);result=frame_rectified; }
+  if(display ){ split(frame_rectified,rgb);result=frame_rectified; }
   else { split(frame,rgb);result=frame; }
   bitwise_xor(fgMaskMOG2,rgb[1],mask2);
   bitwise_xor(fgMaskMOG2,rgb[2],mask1);
@@ -211,7 +209,7 @@ void reportCentroid()
   //Point centroid;
   int n_cands=0; // for icandidates
 
-  //printf( "FrameID\tLocation\n" );			//INFO//
+  //printf( "FrameID\tLocation\n" );      //INFO//
   for(int i=0; i<contours.size(); i++)
   {
     // calculate area
@@ -339,7 +337,7 @@ bool getBGModel(char* videoFilename)
     exit(EXIT_FAILURE);
   }
   // preprocess frame
-  if(display && undistort_points)
+  if(display )
   {
     // retreive new camera matrix to get uncropped rectified image
     new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,src.size(),1);
@@ -362,7 +360,7 @@ bool getBGModel(char* videoFilename)
       exit(EXIT_FAILURE);
     }
     // preprocess frame
-    if(display && undistort_points)
+    if(display )
     {
       // undistort raw input
       rectifySrc(&src,&rectified_src);
@@ -428,7 +426,7 @@ void processVideo(char* videoFilename)
     }
 
     // preprocess frame
-    if(display && undistort_points)
+    if(display )
     {
       // retreive new camera matrix to get uncropped rectified frame
       new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,frame.size(),1);
