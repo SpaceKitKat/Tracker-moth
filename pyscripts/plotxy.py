@@ -15,7 +15,7 @@ plt.xlabel('x in pels')
 plt.ylabel('y in pels')
 plt.legend(loc='upper right')
 plt.savefig('human_vs_comp.png') #**call before show**#
-plt.show()
+# plt.show()
 # new figure is created
 
 # old plotxy.py
