@@ -167,7 +167,7 @@ void drawForeground()
   vector<Mat> components;
 
   // get rgb components
-  if(undistort_points){ split(frame_rectified,rgb);result=frame_rectified; }
+  if(display && undistort_points){ split(frame_rectified,rgb);result=frame_rectified; }
   else { split(frame,rgb);result=frame; }
   bitwise_xor(fgMaskMOG2,rgb[1],mask2);
   bitwise_xor(fgMaskMOG2,rgb[2],mask1);
@@ -222,8 +222,10 @@ void reportCentroid()
   if( n_cands > 0 )
   {
 
-    //draw these n contours 			//INFO//
     centroid = retrieveAvg(icandidates,n_cands);
+    // remove distortion
+    //--(!) TODO
+
     // Write position to file
     data_out << lexical_cast<string>(frameID) +","+ \
                 lexical_cast<string>(centroid.x) +","+ \
@@ -241,7 +243,6 @@ void reportCentroid()
 #endif
   }
 
-  draw(centroid);
 //  printf( "[%d]\t\t(%d,%d)\n", frameID, centroid.x, centroid.y );  //INFO//
 }
 
@@ -263,7 +264,9 @@ void segObjects()
   Mat mask = fgMaskMOG2.clone(); // avoid altering fgmask --> make deep copy
   findContours( mask, contours, heirarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
   drawForeground();
+  // move to processVideo
   reportCentroid();
+  draw(centroid);
 }
 
 
@@ -336,7 +339,7 @@ bool getBGModel(char* videoFilename)
     exit(EXIT_FAILURE);
   }
   // preprocess frame
-  if(undistort_points)
+  if(display && undistort_points)
   {
     // retreive new camera matrix to get uncropped rectified image
     new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,src.size(),1);
@@ -359,7 +362,7 @@ bool getBGModel(char* videoFilename)
       exit(EXIT_FAILURE);
     }
     // preprocess frame
-    if(undistort_points)
+    if(display && undistort_points)
     {
       // undistort raw input
       rectifySrc(&src,&rectified_src);
@@ -425,7 +428,7 @@ void processVideo(char* videoFilename)
     }
 
     // preprocess frame
-    if(undistort_points)
+    if(display && undistort_points)
     {
       // retreive new camera matrix to get uncropped rectified frame
       new_camera_mat = getOptimalNewCameraMatrix(camera_mat,dist_coeff,frame.size(),1);
@@ -440,6 +443,9 @@ void processVideo(char* videoFilename)
 
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
+    // report and draw point
+
+
     //write progress
     displayPercentProgress(&capture,++loopcount);
 
