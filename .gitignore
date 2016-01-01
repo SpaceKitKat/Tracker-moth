@@ -1,0 +1,6 @@
+CMakelists.txt.user
+pyscripts/*.txt
+pyscripts/*.csv
+pyscripts/*.png
+
+matlab_code
