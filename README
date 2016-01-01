@@ -26,7 +26,7 @@ machine
 
 Running "moth_tracker":
   (A) default - does not display video output, does not perform undistortion
-    $ ./moth_tracker <input_video_file_path> <output_text_file_path>
+    $ ./moth_tracker <input_VIDEO_FILE_path> <output_TEXT_FILE_path>
     To specifying file paths,
 	if file is in same dir as "moth_tracker", use ./<file>
 	otherwise, use ~/<file_path> to reference from home
@@ -36,9 +36,9 @@ accessing peripherals)
   (B) toggle undistortion and toggle visualization 
   NOTE: options should be passed AFTER initial arguments
     # this command will only output undistorted xy-data
-    $ ./moth_tracker <input_video_file_path> <output_text_file_path> -u 1
+    $ ./moth_tracker <input_VIDEO_FILE_path> <output_TEXT_FILE_path> -u 1
     # this command will display video and output undistorted xy-data
-    $ ./moth_tracker <input_video_file_path> <output_text_file_path> -d 1 -u 1
+    $ ./moth_tracker <input_VIDEO_FILE_path> <output_TEXT_FILE_path> -d 1 -u 1
 	When passing optional arguments (to display or select
 undistortion), please use one of the formats:
 	Note that these arguments are sensitive to white space, so follow

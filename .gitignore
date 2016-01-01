@@ -1,4 +1,4 @@
-CMakelists.txt.user
+CMakeLists.txt.user
 pyscripts/*.txt
 pyscripts/*.csv
 pyscripts/*.png
