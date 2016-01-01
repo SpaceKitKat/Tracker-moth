@@ -11,9 +11,7 @@
 
 /***
  * Todo
- *   flag for toggling distortion should only affect video output
- *   all output data should be undistorted regardless of flag value
- *   offer option to report distorted data
+ *   only dedistort points when not visualizing
  *   break file up into headers and at source files
 ***/
 
@@ -124,12 +122,14 @@ int main(int argc, char* argv[])
   //check for the input parameter correctness
   if(argc > 7)
   {
-    cerr <<"Incorrect input list" << endl;
+    cerr <<"ERROR: see usage\n";
+    cerr <<"USAGE: ./moth_tracker <path_to_video> <output_txt_file> [options][-d 1_or_0,-u 1_or_0]\n";
     cerr <<"exiting..." << endl;
     return EXIT_FAILURE;
   }
 
-  //assign flags based on user input
+  // process commandline options
+  // sets visualization and dedistortion flags
   op::options_description desc("Program options specified in command line");
   desc.add_options()
     ("display,d",op::value<int>(& display)->default_value(0),"Display video output option")
@@ -139,16 +139,17 @@ int main(int argc, char* argv[])
   op::store(op::parse_command_line(argc,argv,desc),var_map);
   op::notify(var_map);
 
-  //create data file
+  // initialize background and process input video
   data_out.open(argv[2]);
-  //initialize background and process video
   start = clock();
+
   if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
   cout << "Total processing time: " << fixed << (double)(clock() - start)/CLOCKS_PER_SEC << "s\n";
-  //destroy GUI windows
+
+  // cleanup
   destroyAllWindows();
   data_out.close();
-  cout << "Fin!\n";  //INFO//
+  cout << "Fin!\n";
   return EXIT_SUCCESS;
 }
 
