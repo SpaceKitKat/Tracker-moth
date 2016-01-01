@@ -1,16 +1,20 @@
 /**
  * Author: Bilkit Githinji
  * Version: 3.0
- * Description:T his program tracks foreground objects within a video file.
+ * Description: This program tracks foreground objects within a video file.
  * It performs background subtraction based on Gaussian Mixture Model (GMM)
  * with shadow detection.
  * Command: ./moth_tracker <video_file> <data_file>
+ *
+ * Note: octavio's camera is recording at 30fps
  **/
 
-
-/*** @TODO: test display frame progress -->306
-            test bg init
-            annotation
+/***
+ * Todo
+ *   flag for toggling distortion should only affect video output
+ *   all output data should be undistorted regardless of flag value
+ *   offer option to report distorted data
+ *   break file up into headers and at source files
 ***/
 
 //NOTES:
@@ -83,7 +87,7 @@ int display, undistort_points; // flags for command line options
 int keyboard, frameID;
 bool testing;
 double duration;
-char option = 'a';
+char averaging_type = 'a';
 
 
 // function prototypes
@@ -119,17 +123,18 @@ int main(int argc, char* argv[])
   desc.add_options()
     ("display,d",op::value<int>(& display)->default_value(0),"Display video output option")
     ("undistort,u",op::value<int>(& undistort_points)->default_value(0),"Output undistorted data option")
+    ("compute,c",op::value<char>(& averaging_type)->default_value('a'),"Computation type for frame averaging option")
   ;
   op::variables_map var_map;
   op::store(op::parse_command_line(argc,argv,desc),var_map);
   op::notify(var_map);
 
 //--(!) testing
-//  test(argv[1]);
+  test(argv[1]);
   //create data file
   data_out.open(argv[2]);
   //initialize background and process video
-  if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
+  // if( getBGModel(argv[1]) ){ processVideo(argv[1]); }
 
   //destroy GUI windows
   destroyAllWindows();
@@ -146,8 +151,8 @@ void test(char* filename)
 // Background intialization
   cout << "bg init: " << boolalpha << getBGModel(filename) << endl;
   cout.precision(DBL::digits10);
-  if(option == 'a'){ cout << "total averaging time for matrix addition: " << fixed << duration << endl; }
-  if(option == 'b'){ cout << "total averaging time for addWeighted(): " << fixed << duration << endl; }
+  if(averaging_type == 'a'){ cout << "total averaging time for matrix addition: " << fixed << duration << endl; }
+  if(averaging_type == 'b'){ cout << "total averaging time for addWeighted(): " << fixed << duration << endl; }
   processVideo(filename);
 
 
@@ -184,15 +189,15 @@ void drawForeground()
 Point retrieveAvg(vector<int> a,int asize)
 { // a contains INDECES of contours
   Point avg; //avg.x=0; avg.y=0;
-  Moments mu;
+  Moments mmts;
 
   // calculate centroids of each contour
   for(int i=0; i<asize; i++)
   {
-    // get central moments
-    mu = moments( contours[a[i]], false ); // true --> binary image
+    // get moments
+    mmts = moments( contours[a[i]], false ); // true --> binary image
     // calc mass center based on spacial moments x=m10/m00, y=m01/m00;
-    Point ci = Point2f( mu.m10/mu.m00, mu.m01/mu.m00 );
+    Point ci = Point2f( mmts.m10/mmts.m00, mmts.m01/mmts.m00 );
     // skip averaging if less than two candidates
     if(asize == 1){ return ci; }
     avg.x += ci.x; avg.y += ci.y;
@@ -219,7 +224,7 @@ void reportCentroid()
   {
     // calculate area
     areas[i] = contourArea(contours[i]);
-    // for multiple centroids passing threshold, take only the largest centroid (i.e. ignore reflections)
+    // collect multiple contours passing threshold
     if( areas[i] > MIN_AREA && areas[i] < MAX_AREA){ icandidates[n_cands++] = i; }
   }
   if( n_cands > 0 )
@@ -372,10 +377,10 @@ bool getBGModel(char* videoFilename)
     beta = 1.0/nFrames;
     //-- OPTION A:
     // directly add images and divide by
-    if(option == 'a'){ model0 = (1-beta)*model0 + beta*src; }
+    if(averaging_type == 'a'){ model0 = (1-beta)*model0 + beta*src; }
     //-- OPTION B:
     // apply simple linear blending operation
-    if(option == 'b'){ addWeighted(model0,1.0-beta,src,beta,0.0,model0); }
+    if(averaging_type == 'b'){ addWeighted(model0,1.0-beta,src,beta,0.0,model0); }
   }
 
   //--(!) testing
@@ -442,7 +447,7 @@ void processVideo(char* videoFilename)
     pMOG2->operator()(frame,fgMaskMOG2);
 
     //--(!) testing
-    if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
+    // if(testing){ imshow("next fg mask",fgMaskMOG2); keyboard=waitKey(0); }
 
     // segment objects larger than maximum threshold (ignore noise)
     segObjects();
