@@ -21,6 +21,8 @@
 // option, but adjusting learning rate causes relatively stationary objects to blend
 // in with the background model. This is problematic for tracking when moth is visiting.
 
+//-- testing something --//
+
 //opencv
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/background_segm.hpp>
